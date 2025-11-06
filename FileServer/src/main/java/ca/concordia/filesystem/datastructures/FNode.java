@@ -2,11 +2,19 @@ package ca.concordia.filesystem.datastructures;
 
 public class FNode {
 
-    private int blockIndex;
+    // private int blockIndex;
     private int next;
 
     public FNode(int blockIndex) {
-        this.blockIndex = blockIndex;
+        // this.blockIndex = blockIndex;
         this.next = -1;
+    }
+
+    public void setNext(int newNext) {
+        next = newNext;
+    }
+
+    public int getNext() {
+        return next;
     }
 }

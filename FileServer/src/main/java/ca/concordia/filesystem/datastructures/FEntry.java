@@ -1,12 +1,10 @@
 package ca.concordia.filesystem.datastructures;
 
-import java.util.LinkedList;
-
 public class FEntry {
 
     private String filename;
-    private short filesize;
-    private short firstBlock; // Pointers to data blocks
+    private int filesize;
+    private int firstBlock; // Pointers to data blocks
 
     public FEntry(String filename, short filesize, short firstblock) throws IllegalArgumentException{
         //Check filename is max 11 bytes long
@@ -30,18 +28,22 @@ public class FEntry {
         this.filename = filename;
     }
 
-    public short getFilesize() {
+    public int getFilesize() {
         return filesize;
     }
 
-    public void setFilesize(short filesize) {
+    public void setFilesize(int filesize) {
         if (filesize < 0) {
             throw new IllegalArgumentException("Filesize cannot be negative.");
         }
         this.filesize = filesize;
     }
 
-    public short getFirstBlock() {
+    public void setFirstBlock(int block) {
+        firstBlock = block;
+    }
+
+    public int getFirstBlock() {
         return firstBlock;
     }
 }

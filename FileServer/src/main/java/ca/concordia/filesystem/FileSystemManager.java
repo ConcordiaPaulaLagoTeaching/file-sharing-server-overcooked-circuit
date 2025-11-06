@@ -1,9 +1,11 @@
 package ca.concordia.filesystem;
 
 import java.io.RandomAccessFile;
+import java.util.ArrayList;
 import java.util.concurrent.locks.ReentrantLock;
 
 import ca.concordia.filesystem.datastructures.FEntry;
+import ca.concordia.filesystem.datastructures.FNode;
 
 public class FileSystemManager {
 
@@ -15,7 +17,8 @@ public class FileSystemManager {
     private final RandomAccessFile disk;
     private final ReentrantLock globalLock = new ReentrantLock();
 
-    private FEntry[] inodeTable; // Array of inodes
+    private FEntry[] fEntryTable; // Array of inodes
+    private FNode[] fNodeTable;
     private boolean[] freeBlockList; // Bitmap for free blocks
 
     public FileSystemManager(String filename, int totalSize) throws Exception { // Could not do a
@@ -25,7 +28,7 @@ public class FileSystemManager {
             disk = new RandomAccessFile(filename, "rw");
             disk.setLength(totalSize);
 
-            inodeTable = new FEntry[MAXFILES];
+            fEntryTable = new FEntry[MAXFILES];
             freeBlockList = new boolean[MAXBLOCKS];
             freeBlockList[0] = true; // first block for MAtadata
 
@@ -38,17 +41,17 @@ public class FileSystemManager {
         globalLock.lock();
 
         try {
-            for (FEntry entry : inodeTable) {
+            for (FEntry entry : fEntryTable) {
                 if (entry != null && fileName.equalsIgnoreCase(entry.getFilename())) {
                     throw new Exception("File \"" + fileName + "\" already exists.");
                 }
             }
 
-            for (int i = 0; i < inodeTable.length; i++) {
-                if (inodeTable[i] != null) {
+            for (int i = 0; i < fEntryTable.length; i++) {
+                if (fEntryTable[i] != null) {
                     // Casting the numbers because the compiler is screaming at me :(
                     FEntry file = new FEntry(fileName, (short) 0, (short) -1);
-                    inodeTable[i] = file;
+                    fEntryTable[i] = file;
 
                     System.out.println("File \"" + fileName + "\" was created.");
                     return;
@@ -69,7 +72,7 @@ public class FileSystemManager {
             FEntry file = null;
 
             // Get the entry if its there
-            for (FEntry entry : inodeTable) {
+            for (FEntry entry : fEntryTable) {
                 if (entry != null && entry.getFilename().equalsIgnoreCase(fileName)) {
                     file = entry;
                 }
@@ -79,27 +82,87 @@ public class FileSystemManager {
                 throw new Exception("File not found...");
             }
 
-            // Check if there is space available.
-            int availableSpace = 0;
-            int numBlocks = (int) Math.ceil((double)contents.length / BLOCK_SIZE);
-            for (boolean block : freeBlockList) {
-                if (!block) {
-                    availableSpace++;
-                }
-            }
-            
-            if (availableSpace < numBlocks) {
-                throw new Exception("Not enough free space...");
+            // Collect all the old used blocks and sets all next to -1.
+            int block = file.getFirstBlock();
+            ArrayList<Integer> usableBlockList = new ArrayList<>();
+            for (int i = block; i != -1;) {
+                int temp = i;
+                usableBlockList.add(i);
+                i = fNodeTable[i].getNext();
+                fNodeTable[temp].setNext(-1);
             }
 
-            /*
-            Note to self: 
-            1. free the old block and write new block
-            2. If another node is there go there and continue writing. If writing is done delete all subsequent nodes and set all to 0.
-            3. Update the metadata part
-            */
+            // Collect all the free blocks and put it in the usable list
+            for (int i = 0; i < freeBlockList.length; i++) {
+                if (!freeBlockList[i]) {
+                    usableBlockList.add(i);
+                }
+            }
+
+            // Check if space is enougth
+            int numBlocks = (int) Math.ceil((double) contents.length / BLOCK_SIZE);
+            if (usableBlockList.size() < numBlocks) {
+                throw new Exception("Not enough free space. Aborting...");
+            }
+
+            // Clear the blocks we are about to use
+            for (int i = 0; i < numBlocks; i++) {
+                writeBlock(usableBlockList.get(i), new byte[BLOCK_SIZE], 0, BLOCK_SIZE);
+            }
+
+            // Start writing blocks
+            int writeBlockRemaining = numBlocks;
+            try {
+                int i = 0;
+                int offset = 0;
+                while (writeBlockRemaining > 0) {
+                    int byteToWrite = Math.min(BLOCK_SIZE, contents.length - offset);
+                    writeBlock(usableBlockList.get(i), contents, offset, byteToWrite);
+                    offset += byteToWrite;
+                    writeBlockRemaining--;
+                    i++;
+                }
+
+            } catch (Exception e) {
+                throw e;
+            }
+
+            // Chain all the nodes together
+            for (int i = 0; i < numBlocks; i++) {
+                int currentNode = usableBlockList.get(i);
+                
+                int nextNode = (i == numBlocks - 1) ? -1 : usableBlockList.get(i + 1);
+                fNodeTable[currentNode].setNext(nextNode);
+            }
+
+            // Setting the metadata
+            for (int i = 0; i < numBlocks; i++) {
+                freeBlockList[usableBlockList.get(i)] = false;
+            }
+
+            for (int i = numBlocks; i < usableBlockList.size(); i++) {
+                freeBlockList[usableBlockList.get(i)] = true;
+                fNodeTable[usableBlockList.get(i)].setNext(-1);
+            }
+
+            file.setFirstBlock(usableBlockList.get(0));
+            file.setFilesize(contents.length);
         } finally {
             globalLock.unlock();
+        }
+    }
+
+    private void writeBlock(int block, byte[] content, int offset, int size) throws Exception {
+        disk.seek(block * BLOCK_SIZE);
+
+        // Set to zero if empty
+        if (size == 0) {
+            disk.write(new byte[BLOCK_SIZE]);
+            freeBlockList[block] = true;
+
+        } else {
+            disk.write(content, offset, size);
+            freeBlockList[block] = false;
         }
     }
 
