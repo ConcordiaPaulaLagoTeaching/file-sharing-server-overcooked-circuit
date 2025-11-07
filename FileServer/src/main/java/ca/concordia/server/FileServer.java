@@ -5,6 +5,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 
 import ca.concordia.filesystem.FileSystemManager;
 
@@ -21,7 +22,7 @@ public class FileServer {
         } catch (Exception e) {
             System.out.println("FileSystemManager failed to init" + e);
         }
-        
+
         this.port = port;
     }
 
@@ -50,15 +51,48 @@ public class FileServer {
                                 break;
 
                             case "WRITE":
+                                if (parts.length < 3) {
+                                    writer.println(
+                                            "Please write under the format WRITE: <file Name> <Content>");
+                                }
+
+                                fsManager.writeFile(parts[1],
+                                        parts[2].getBytes(StandardCharsets.UTF_8));
+                                writer.println(
+                                        "Success: File " + parts[1] + " has been written to.");
                                 break;
 
                             case "READ":
+                                if (parts.length < 2) {
+                                    writer.println(
+                                            "Please write under the format: READ <filename>");
+                                    break;
+                                }
+
+                                byte[] data = fsManager.readFile(parts[1]);
+                                writer.println("Success reading: "
+                                        + new String(data, StandardCharsets.UTF_8));
                                 break;
 
                             case "DELETE":
+                                if (parts.length < 2) {
+                                    writer.println(
+                                            "lease write under the format: DELETE <filename>");
+                                    break;
+                                }
+
+                                fsManager.deleteFile(parts[1]);
+                                writer.println("Success: File " + parts[1] + " has been delete.");
                                 break;
 
                             case "LIST":
+                                String[] files = fsManager.listFiles();
+                                if (files.length == 0) {
+                                    writer.println("Files not found...");
+
+                                } else {
+                                    writer.println("Files: " + String.join(", ", files));
+                                }
                                 break;
 
                             case "QUIT":
