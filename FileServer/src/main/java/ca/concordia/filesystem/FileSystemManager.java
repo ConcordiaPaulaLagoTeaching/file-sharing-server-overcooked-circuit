@@ -30,7 +30,15 @@ public class FileSystemManager {
 
             fEntryTable = new FEntry[MAXFILES];
             freeBlockList = new boolean[MAXBLOCKS];
-            freeBlockList[0] = true; // first block for MAtadata
+            for (int i = 0; i < MAXBLOCKS; i++) {
+                freeBlockList[i] = true;
+            }
+            freeBlockList[0] = false; // first block for MAtadata
+
+            fNodeTable = new FNode[MAXBLOCKS];
+            for (int i = 0; i < MAXBLOCKS; i++) {
+                fNodeTable[i] = new FNode(i);
+            }
 
         } else {
             throw new IllegalStateException("FileSystemManager is already initialized.");
@@ -48,9 +56,9 @@ public class FileSystemManager {
             }
 
             for (int i = 0; i < fEntryTable.length; i++) {
-                if (fEntryTable[i] != null) {
+                if (fEntryTable[i] == null) {
                     // Casting the numbers because the compiler is screaming at me :(
-                    FEntry file = new FEntry(fileName, (short) 0, (short) -1);
+                    FEntry file = new FEntry(fileName, 0, -1);
                     fEntryTable[i] = file;
 
                     System.out.println("File \"" + fileName + "\" was created.");
@@ -94,7 +102,7 @@ public class FileSystemManager {
 
             // Collect all the free blocks and put it in the usable list
             for (int i = 0; i < freeBlockList.length; i++) {
-                if (!freeBlockList[i]) {
+                if (freeBlockList[i]) {
                     usableBlockList.add(i);
                 }
             }
@@ -130,7 +138,7 @@ public class FileSystemManager {
             // Chain all the nodes together
             for (int i = 0; i < numBlocks; i++) {
                 int currentNode = usableBlockList.get(i);
-                
+
                 int nextNode = (i == numBlocks - 1) ? -1 : usableBlockList.get(i + 1);
                 fNodeTable[currentNode].setNext(nextNode);
             }
@@ -154,50 +162,116 @@ public class FileSystemManager {
 
     private void writeBlock(int block, byte[] content, int offset, int size) throws Exception {
         disk.seek(block * BLOCK_SIZE);
-
-        // Set to zero if empty
-        if (size == 0) {
-            disk.write(new byte[BLOCK_SIZE]);
-            freeBlockList[block] = true;
-
-        } else {
-            disk.write(content, offset, size);
-            freeBlockList[block] = false;
-        }
+        disk.write(content, offset, size);
     }
 
     public byte[] readFile(String fileName) throws Exception {
-        throw new UnsupportedOperationException("Method not implemented yet.");
+        globalLock.lock();
+
+        try {
+            FEntry file = null;
+
+            // Get the entry if its there
+            for (FEntry entry : fEntryTable) {
+                if (entry != null && entry.getFilename().equalsIgnoreCase(fileName)) {
+                    file = entry;
+                }
+            }
+
+            if (file == null) {
+                throw new Exception("File not found...");
+            }
+
+            // if a file is created but not written to for some reason
+            if (file.getFirstBlock() == -1 || file.getFilesize() == 0) {
+                return new byte[0];
+            }
+
+            // Set up to receive
+            int fileSize = file.getFilesize();
+            byte[] data = new byte[fileSize];
+
+            // Start read
+            int block = file.getFirstBlock();
+            int offset = 0;
+
+            while (block != -1 && offset < fileSize) {
+                byte[] buffer = new byte[BLOCK_SIZE];
+                disk.seek(block * BLOCK_SIZE);
+                disk.read(buffer, 0, BLOCK_SIZE);
+
+                int parseAmmount = Math.min(BLOCK_SIZE, fileSize - offset);
+                System.arraycopy(buffer, 0, data, offset, parseAmmount); // Only parse actual data
+                                                                         // into data
+
+                block = fNodeTable[block].getNext();
+                offset += parseAmmount;
+            }
+
+            return data;
+
+        } finally {
+            globalLock.unlock();
+        }
     }
 
     public void deleteFile(String fileName) throws Exception {
-        // globalLock.lock();
+        globalLock.lock();
 
-        // try {
-        // int index = -1;
-        // FEntry toDelete = null;
+        try {
+            int index = -1;
+            FEntry toDelete = null;
 
-        // for (int i = 0; i < inodeTable.length; i++) {
-        // FEntry entry = inodeTable[i];
+            for (int i = 0; i < fEntryTable.length; i++) {
+                FEntry entry = fEntryTable[i];
 
-        // if (entry != null && entry.getFilename().equalsIgnoreCase(fileName)) {
-        // index = i;
-        // toDelete = entry;
-        // break;
-        // }
-        // }
+                if (entry != null && entry.getFilename().equalsIgnoreCase(fileName)) {
+                    index = i;
+                    toDelete = entry;
+                    break;
+                }
+            }
 
-        // if (toDelete == null) {
-        // throw new Exception("File not found...");
-        // }
+            if (toDelete == null) {
+                throw new Exception("File not found...");
+            }
 
-        // } finally {
-        // globalLock.unlock();
-        // }
-        throw new UnsupportedOperationException("Method not implemented yet.");
+            int block = toDelete.getFirstBlock();
+            while (block != -1) {
+                freeBlockList[block] = true;
+
+                int nextBlock = fNodeTable[block].getNext();
+
+                fNodeTable[block].setNext(-1);
+                writeBlock(block, new byte[BLOCK_SIZE], 0, BLOCK_SIZE);
+
+                block = nextBlock;
+            }
+
+            toDelete.setFilesize(0);
+            toDelete.setFirstBlock(-1);
+            fEntryTable[index] = null;
+
+        } finally {
+            globalLock.unlock();
+        }
     }
 
     public String[] listFiles() throws Exception {
-        throw new UnsupportedOperationException("Method not implemented yet.");
+        globalLock.lock();
+
+        try {
+            ArrayList<String> fileList = new ArrayList<>();
+            for (FEntry entry : fEntryTable) {
+                if (entry != null) {
+                    fileList.add(entry.getFilename());
+                }
+            }
+
+            return fileList.toArray(new String[0]);
+
+        } finally {
+            globalLock.unlock();
+        }
     }
 }

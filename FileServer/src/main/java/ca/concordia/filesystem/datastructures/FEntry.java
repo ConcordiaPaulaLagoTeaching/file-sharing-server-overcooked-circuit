@@ -6,7 +6,7 @@ public class FEntry {
     private int filesize;
     private int firstBlock; // Pointers to data blocks
 
-    public FEntry(String filename, short filesize, short firstblock) throws IllegalArgumentException{
+    public FEntry(String filename, int filesize, int firstblock) throws IllegalArgumentException{
         //Check filename is max 11 bytes long
         if (filename.length() > 11) {
             throw new IllegalArgumentException("Filename cannot be longer than 11 characters.");
