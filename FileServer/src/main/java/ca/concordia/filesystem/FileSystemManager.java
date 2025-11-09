@@ -2,7 +2,9 @@ package ca.concordia.filesystem;
 
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import ca.concordia.filesystem.datastructures.FEntry;
 import ca.concordia.filesystem.datastructures.FNode;
@@ -15,7 +17,7 @@ public class FileSystemManager {
 
     private static FileSystemManager instance = null; // no instance at first
     private final RandomAccessFile disk;
-    private final ReentrantLock globalLock = new ReentrantLock();
+    private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
 
     private FEntry[] fEntryTable; // Array of inodes
     private FNode[] fNodeTable;
@@ -33,7 +35,7 @@ public class FileSystemManager {
             for (int i = 0; i < MAXBLOCKS; i++) {
                 freeBlockList[i] = true;
             }
-            freeBlockList[0] = false; // first block for MAtadata
+            freeBlockList[0] = false; // first block for Metadata
 
             fNodeTable = new FNode[MAXBLOCKS];
             for (int i = 0; i < MAXBLOCKS; i++) {
@@ -46,7 +48,7 @@ public class FileSystemManager {
     }
 
     public void createFile(String fileName) throws Exception {
-        globalLock.lock();
+        rwLock.writeLock().lock();
 
         try {
             for (FEntry entry : fEntryTable) {
@@ -69,12 +71,12 @@ public class FileSystemManager {
             throw new Exception("Max file limit reached. File creation aborted...");
 
         } finally {
-            globalLock.unlock();
+          rwLock.writeLock().unlock();
         }
     }
 
     public void writeFile(String fileName, byte[] contents) throws Exception {
-        globalLock.lock();
+        rwLock.writeLock().lock();
 
         try {
             FEntry file = null;
@@ -156,7 +158,7 @@ public class FileSystemManager {
             file.setFirstBlock(usableBlockList.get(0));
             file.setFilesize(contents.length);
         } finally {
-            globalLock.unlock();
+            rwLock.writeLock().unlock();
         }
     }
 
@@ -166,7 +168,7 @@ public class FileSystemManager {
     }
 
     public byte[] readFile(String fileName) throws Exception {
-        globalLock.lock();
+        rwLock.readLock().lock();
 
         try {
             FEntry file = null;
@@ -211,12 +213,12 @@ public class FileSystemManager {
             return data;
 
         } finally {
-            globalLock.unlock();
+            rwLock.readLock().unlock();
         }
     }
 
     public void deleteFile(String fileName) throws Exception {
-        globalLock.lock();
+        rwLock.writeLock().lock();
 
         try {
             int index = -1;
@@ -253,12 +255,12 @@ public class FileSystemManager {
             fEntryTable[index] = null;
 
         } finally {
-            globalLock.unlock();
+            rwLock.writeLock().unlock();
         }
     }
 
     public String[] listFiles() throws Exception {
-        globalLock.lock();
+        rwLock.readLock().lock();
 
         try {
             ArrayList<String> fileList = new ArrayList<>();
@@ -271,7 +273,7 @@ public class FileSystemManager {
             return fileList.toArray(new String[0]);
 
         } finally {
-            globalLock.unlock();
+         rwLock.readLock().unlock();
         }
     }
 }
