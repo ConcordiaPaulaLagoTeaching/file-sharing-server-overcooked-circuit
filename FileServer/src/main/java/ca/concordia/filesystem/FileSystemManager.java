@@ -3,7 +3,6 @@ package ca.concordia.filesystem;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import ca.concordia.filesystem.datastructures.FEntry;
@@ -18,14 +17,19 @@ public class FileSystemManager {
     private static FileSystemManager instance = null; // no instance at first
     private final RandomAccessFile disk;
     private final ReadWriteLock rwLock = new ReentrantReadWriteLock();
+    private static final Object instanceLock = new Object();
 
     private FEntry[] fEntryTable; // Array of inodes
     private FNode[] fNodeTable;
     private boolean[] freeBlockList; // Bitmap for free blocks
 
     public FileSystemManager(String filename, int totalSize) throws Exception { // Could not do a
-                                                                                // try catch block
-        if (instance == null) {
+        synchronized (instanceLock) {
+        if (instance !=null) {
+        throw new IllegalStateException("FileSystemManager already initialized");
+        }
+
+
             instance = this;
             disk = new RandomAccessFile(filename, "rw");
             disk.setLength(totalSize);
@@ -42,13 +46,14 @@ public class FileSystemManager {
                 fNodeTable[i] = new FNode(i);
             }
 
-        } else {
-            throw new IllegalStateException("FileSystemManager is already initialized.");
         }
     }
 
+
     public void createFile(String fileName) throws Exception {
+        System.out.println("[Lock] Thread " + Thread.currentThread().getName() + "Waiting for write lock on " + fileName);
         rwLock.writeLock().lock();
+        System.out.println("[Lock] Thread " + Thread.currentThread().getName() + "Acquired for write lock on " + fileName);
 
         try {
             for (FEntry entry : fEntryTable) {
@@ -71,13 +76,15 @@ public class FileSystemManager {
             throw new Exception("Max file limit reached. File creation aborted...");
 
         } finally {
+            System.out.println("[Lock] Thread " + Thread.currentThread().getName() + "Releasing write lock on " + fileName);
           rwLock.writeLock().unlock();
         }
     }
 
     public void writeFile(String fileName, byte[] contents) throws Exception {
+        System.out.println("[Lock] Thread " + Thread.currentThread().getName() + " Waiting for Write lock on " + fileName);
         rwLock.writeLock().lock();
-
+        System.out.println("[Lock] Thread " + Thread.currentThread().getName() + "Acquired Write lock on " + fileName);
         try {
             FEntry file = null;
 
@@ -158,7 +165,9 @@ public class FileSystemManager {
             file.setFirstBlock(usableBlockList.get(0));
             file.setFilesize(contents.length);
         } finally {
+            System.out.println("[Lock] Thread " + Thread.currentThread().getName() + " Released write lock on " + fileName);
             rwLock.writeLock().unlock();
+
         }
     }
 
@@ -168,7 +177,9 @@ public class FileSystemManager {
     }
 
     public byte[] readFile(String fileName) throws Exception {
+        System.out.println("[Lock] Thread " + Thread.currentThread().getName() + " Waiting for Read lock on " + fileName);
         rwLock.readLock().lock();
+        System.out.println("[Lock] Thread " + Thread.currentThread().getName() + "Acquired Read lock on " + fileName);
 
         try {
             FEntry file = null;
@@ -213,6 +224,7 @@ public class FileSystemManager {
             return data;
 
         } finally {
+            System.out.println("[Lock] Thread " + Thread.currentThread().getName() + " Released Read lock on " + fileName);
             rwLock.readLock().unlock();
         }
     }
