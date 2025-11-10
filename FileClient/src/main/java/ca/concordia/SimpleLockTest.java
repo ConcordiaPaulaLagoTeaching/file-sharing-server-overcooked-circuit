@@ -17,6 +17,7 @@ public class SimpleLockTest
         new Thread(() -> testClient(1)).start();
         new Thread(() -> testClient(2)).start();
         new Thread(() -> testClient(3)).start();
+        new Thread(() -> testClient2(4)).start();
     }
 
     // Each client does: CREATE, WRITE, then disconnect
@@ -36,12 +37,33 @@ public class SimpleLockTest
             writer.println("WRITE file" + id + ".txt data" + id);
             reader.readLine();
 
+            //Read
+            writer.println("READ file" + id + ".txt");
+            reader.readLine();
+
             // QUIT
             writer.println("QUIT");
             socket.close();
 
             System.out.println("Client " + id + " done");
 
+        }
+        catch (Exception e) {
+            System.out.println("Client " + id + " error: " + e.getMessage());
+        }
+    }
+    private static void testClient2 (int id) {
+        try{
+            Socket socket = new Socket("localhost", 12345);
+            PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            System.out.println("Client read only " + id + " connected");
+
+            writer.println("READ file2.txt");
+            reader.readLine();
+            writer.println("QUIT");
+            socket.close();
+            System.out.println("Client " + id + " done");
         }
         catch (Exception e) {
             System.out.println("Client " + id + " error: " + e.getMessage());

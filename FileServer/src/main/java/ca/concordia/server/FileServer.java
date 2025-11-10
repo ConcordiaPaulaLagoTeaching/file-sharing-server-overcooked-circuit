@@ -70,7 +70,7 @@ public class FileServer {
                   String commandline;
                   while ((commandline= reader.readLine()) != null)
                   {
-                      System.out.println("Received commandline from client: "  + commandline);
+                      System.out.println("Thread:" + Thread.currentThread().getName() +"Received commandline from client: "  + commandline);
                       handleCommand(commandline, writer);
 
 
