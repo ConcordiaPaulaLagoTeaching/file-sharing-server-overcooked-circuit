@@ -46,141 +46,117 @@ public class FileServer {
     }
 
 
-   private static class ClientHandler implements Runnable
-   {
-          private final Socket  clientSocket;
-          private final FileSystemManager fsManager;
+    private static class ClientHandler implements Runnable {
+        private final Socket clientSocket;
+        private final FileSystemManager fsManager;
 
-          public ClientHandler(Socket clientSocket, FileSystemManager fsManager)
-          {
-              this.clientSocket = clientSocket;
-              this.fsManager = fsManager;
+        public ClientHandler(Socket clientSocket, FileSystemManager fsManager) {
+            this.clientSocket = clientSocket;
+            this.fsManager = fsManager;
+        }
 
-          }
+        @Override
+        public void run() {
+            try (BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                    PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true)) {
+                System.out.println("Thread: " + Thread.currentThread().getName()
+                        + " handling client: " + clientSocket);
 
-          @Override
-          public void run()
-          {
-              try(BufferedReader reader = new BufferedReader(
-                      new InputStreamReader(clientSocket.getInputStream()));
-                  PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true))
-              {
-                  System.out.println("Thread: " + Thread.currentThread().getName() + " handling client: " + clientSocket);
-
-                  String commandline;
-                  while ((commandline= reader.readLine()) != null)
-                  {
-                      System.out.println("Thread:" + Thread.currentThread().getName() +"Received commandline from client: "  + commandline);
-                      handleCommand(commandline, writer);
-
-
-              }
-
-          }
-              catch (Exception ex)
-              {
-                  System.err.println("Error handling cilent" + clientSocket + ": " + ex.getMessage());
-                  ex.printStackTrace();
-              }
-              finally
-              {
-                  try
-                  {
-                      clientSocket.close();
-                      System.out.println("Client disconnected:"+ clientSocket);
-                  }
-                  catch (Exception ex){
-
-                  }
-              }
-
-              }
-private void handleCommand(String commandline, PrintWriter writer)
-{
-    try
-    {
-        String[] parts = commandline.split(" ",3);
-        String command = parts[0].toUpperCase();
-
-        switch (command)
-        {
-            case "CREATE":
-                if (parts.length < 2){
-                    writer.println("Please write under the format CREATE < filename>");
-                    break;
-                }
-                if (parts[1].length()> 11){
-                    writer.println("Please write a filename of 11 characters or under");
-                    break;
-                }
-            fsManager.createFile(parts[1]);
-            writer.println("SUCCESS: File '" + parts[1] + "' created.");
-            writer.flush();
-            break;
-
-            case "WRITE":
-                if (parts.length < 3) {
-                    writer.println(
-                            "Please write under the format WRITE: <file Name> <Content>");
-                    break;
+                String commandline;
+                while ((commandline = reader.readLine()) != null) {
+                    System.out.println("Thread:" + Thread.currentThread().getName()
+                            + "Received commandline from client: " + commandline);
+                    handleCommand(commandline, writer);
                 }
 
-                fsManager.writeFile(parts[1],
-                        parts[2].getBytes(StandardCharsets.UTF_8));
-                writer.println(
-                        "Success: File " + parts[1] + " has been written to.");
-                break;
+            } catch (Exception ex) {
+                System.err.println("Error handling cilent" + clientSocket + ": " + ex.getMessage());
+                ex.printStackTrace();
 
-            case "READ":
-                if (parts.length < 2) {
-                    writer.println(
-                            "Please write under the format: READ <filename>");
-                    break;
+            } finally {
+                try {
+                    clientSocket.close();
+                    System.out.println("Client disconnected:" + clientSocket);
+                } catch (Exception ex) {
+                    System.err.println(ex.getMessage());
+                }
+            }
+        }
+
+        private void handleCommand(String commandline, PrintWriter writer) {
+            try {
+                String[] parts = commandline.split(" ", 3);
+                String command = parts[0].toUpperCase();
+
+                switch (command) {
+                    case "CREATE":
+                        if (parts.length < 2) {
+                            writer.println("Please write under the format CREATE < filename>");
+                            break;
+                        }
+                        if (parts[1].length() > 11) {
+                            writer.println("Please write a filename of 11 characters or under");
+                            break;
+                        }
+                        fsManager.createFile(parts[1]);
+                        writer.println("SUCCESS: File '" + parts[1] + "' created.");
+                        writer.flush();
+                        break;
+
+                    case "WRITE":
+                        if (parts.length < 3) {
+                            writer.println(
+                                    "Please write under the format WRITE: <file Name> <Content>");
+                            break;
+                        }
+
+                        fsManager.writeFile(parts[1], parts[2].getBytes(StandardCharsets.UTF_8));
+                        writer.println("Success: File " + parts[1] + " has been written to.");
+                        break;
+
+                    case "READ":
+                        if (parts.length < 2) {
+                            writer.println("Please write under the format: READ <filename>");
+                            break;
+                        }
+
+                        byte[] data = fsManager.readFile(parts[1]);
+                        writer.println(
+                                "Success reading: " + new String(data, StandardCharsets.UTF_8));
+                        break;
+
+                    case "DELETE":
+                        if (parts.length < 2) {
+                            writer.println("lease write under the format: DELETE <filename>");
+                            break;
+                        }
+
+                        fsManager.deleteFile(parts[1]);
+                        writer.println("Success: File " + parts[1] + " has been delete.");
+                        break;
+
+                    case "LIST":
+                        String[] files = fsManager.listFiles();
+                        if (files.length == 0) {
+                            writer.println("Files not found...");
+
+                        } else {
+                            writer.println("Files: " + String.join(", ", files));
+                        }
+                        break;
+
+                    case "QUIT":
+                        writer.println("SUCCESS: Disconnecting.");
+                        return;
+                    default:
+                        writer.println("ERROR: Unknown command.");
+                        break;
                 }
 
-                byte[] data = fsManager.readFile(parts[1]);
-                writer.println("Success reading: "
-                        + new String(data, StandardCharsets.UTF_8));
-                break;
-
-            case "DELETE":
-                if (parts.length < 2) {
-                    writer.println(
-                            "lease write under the format: DELETE <filename>");
-                    break;
-                }
-
-                fsManager.deleteFile(parts[1]);
-                writer.println("Success: File " + parts[1] + " has been delete.");
-                break;
-
-            case "LIST":
-                String[] files = fsManager.listFiles();
-                if (files.length == 0) {
-                    writer.println("Files not found...");
-
-                } else {
-                    writer.println("Files: " + String.join(", ", files));
-                }
-                break;
-
-            case "QUIT":
-                writer.println("SUCCESS: Disconnecting.");
-                return;
-            default:
-                writer.println("ERROR: Unknown command.");
-                break;
-
-
+            } catch (Exception ex) {
+                writer.println("ERROR: " + ex.getMessage());
+            }
         }
     }
-    catch (Exception ex)
-    {
-         writer.println("ERROR: " + ex.getMessage());
-}
-
-
-
-   }
-}
 }
