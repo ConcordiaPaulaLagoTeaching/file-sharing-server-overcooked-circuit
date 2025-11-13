@@ -28,21 +28,25 @@ public class FileSystemManager {
             if (instance != null) {
                 throw new IllegalStateException("FileSystemManager already initialized");
             }
-
             instance = this;
             disk = new RandomAccessFile(filename, "rw");
             disk.setLength(totalSize);
 
+            //Populating the arrays
             fEntryTable = new FEntry[MAXFILES];
+            fNodeTable = new FNode[MAXBLOCKS];
             freeBlockList = new boolean[MAXBLOCKS];
+
             for (int i = 0; i < MAXBLOCKS; i++) {
+                fNodeTable[i] = new FNode(i);
                 freeBlockList[i] = true;
             }
             freeBlockList[0] = false; // first block for Metadata
 
-            fNodeTable = new FNode[MAXBLOCKS];
-            for (int i = 0; i < MAXBLOCKS; i++) {
-                fNodeTable[i] = new FNode(i);
+            if (disk.length() > 0) {
+                readMetaData();
+            } else {
+                writeMetaData();
             }
         }
     }
@@ -75,6 +79,8 @@ public class FileSystemManager {
             throw new Exception("Max file limit reached. File creation aborted...");
 
         } finally {
+            writeMetaData();
+
             System.out.println("[Lock] Thread " + Thread.currentThread().getName()
                     + "Releasing write lock on " + fileName);
             rwLock.writeLock().unlock();
@@ -171,15 +177,12 @@ public class FileSystemManager {
             file.setFirstBlock(usableBlockList.get(0));
             file.setFilesize(contents.length);
         } finally {
+            writeMetaData();
+            
             System.out.println("[Lock] Thread " + Thread.currentThread().getName()
                     + " Released write lock on " + fileName);
             rwLock.writeLock().unlock();
         }
-    }
-
-    private void writeBlock(int block, byte[] content, int offset, int size) throws Exception {
-        disk.seek(block * BLOCK_SIZE);
-        disk.write(content, offset, size);
     }
 
     public byte[] readFile(String fileName) throws Exception {
@@ -276,6 +279,8 @@ public class FileSystemManager {
             fEntryTable[index] = null;
 
         } finally {
+            writeMetaData();
+            
             rwLock.writeLock().unlock();
         }
     }
@@ -294,6 +299,69 @@ public class FileSystemManager {
 
         } finally {
             rwLock.readLock().unlock();
+        }
+    }
+
+    private void writeBlock(int block, byte[] content, int offset, int size) throws Exception {
+        disk.seek(block * BLOCK_SIZE);
+        disk.write(content, offset, size);
+    }
+
+    private void readMetaData() throws Exception {
+        disk.seek(0);
+
+        // Fentry
+        for (int i = 0; i < MAXFILES; i++) {
+            byte[] nameByte = new byte[11];
+            disk.read(nameByte);
+            String name = new String(nameByte).trim();
+
+            int size = disk.readInt();
+            int firstBlock = disk.readInt();
+
+            if (!name.isEmpty()) {
+                fEntryTable[i] = new FEntry(name, size, firstBlock);
+            }
+        }
+
+        // FNode
+        for (int i = 0; i < MAXBLOCKS; i++) {
+            int next = disk.readInt();
+            fNodeTable[i].setNext(next);
+        }
+
+        // FreeBlock list
+        for (int i = 0; i < MAXBLOCKS; i++) {
+            freeBlockList[i] = disk.readBoolean();
+        }
+    }
+
+    private void writeMetaData() throws Exception {
+        disk.seek(0);
+
+        // FEntry
+        for (int i = 0; i < MAXFILES; i++) {
+            FEntry entry = fEntryTable[i];
+
+            if (entry != null) {
+                byte[] nameBytes = new byte[11];
+                byte[] actual = entry.getFilename().getBytes();
+                System.arraycopy(actual, 0, nameBytes, 0, Math.min(actual.length, 11));
+
+                disk.write(nameBytes);
+                disk.writeInt(entry.getFilesize());
+                disk.writeInt(entry.getFirstBlock());
+            }
+        }
+
+        // FNode
+        for (int i = 0; i < MAXBLOCKS; i++) {
+            disk.writeInt(fNodeTable[i].getNext());
+        }
+
+        // Free block list
+        for (int i = 0; i < MAXBLOCKS; i++) {
+            disk.writeBoolean(freeBlockList[i]);
         }
     }
 }
